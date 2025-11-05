@@ -26,7 +26,8 @@ declare class MeshPeerModule extends NativeModule<MeshPeerModuleEvents> {
   disconnectFromAllPeers(): Promise<void>;
 
   // Database functions
-  getAllMessageIds(): Promise<string[]>;
+  getRelevantMessageIds(): Promise<string[]>;
+  getMessageCount(): Promise<number>;
 
   // Username functions
   getUsername(): Promise<string | null>;

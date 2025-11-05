@@ -11,15 +11,17 @@ import {
 
 import { Text, View } from "@/components/Themed";
 import MeshPeerModule from "@/modules/mesh_peer_module/src/MeshPeerModule";
+import { useUsername } from "@/components/useUsername";
 
 export default function ModalScreen() {
-  const [username, setUsername] = useState("");
+  const [username, setUsernameInput] = useState("");
   const router = useRouter();
+  const { actions } = useUsername();
 
   const handleContinue = async () => {
     if (username.trim()) {
       try {
-        await MeshPeerModule.setUsername(username.trim());
+        await actions.setUsername(username.trim());
         await MeshPeerModule.requestPermissions();
         console.log("Username set:", username.trim());
         router.back();
@@ -44,7 +46,7 @@ export default function ModalScreen() {
             placeholder="Enter your username"
             placeholderTextColor="#999"
             value={username}
-            onChangeText={setUsername}
+            onChangeText={setUsernameInput}
             autoCapitalize="none"
             autoCorrect={false}
             maxLength={20}

@@ -108,7 +108,9 @@ class NearbyService : Service(), ConnectionHandler.ConnectionCallbacks {
 
     public fun startFindConnections(): Boolean {
         val res1: Boolean = connectionHandler.startDiscovery()
+        Log.d(TAG, "Started discovery: $res1")
         val res2: Boolean = connectionHandler.startAdvertising()
+        Log.d(TAG, "Started advertising: $res2")
         isDiscovering = res1 && res2
         return isDiscovering
     }
@@ -267,6 +269,52 @@ class NearbyService : Service(), ConnectionHandler.ConnectionCallbacks {
         }
     }
     
+    fun getRelevantMessageIds(): List<String> {
+        val messageIds = mutableListOf<String>()
+        
+        try {
+            // First, get all distinct chatIds
+            val chatIdCursor = database!!.rawQuery("SELECT DISTINCT chat_id FROM messages", null)
+            val chatIds = mutableListOf<String>()
+            
+            chatIdCursor.use {
+                if (it.moveToFirst()) {
+                    do {
+                        val chatId = it.getString(it.getColumnIndexOrThrow("chat_id"))
+                        chatIds.add(chatId)
+                    } while (it.moveToNext())
+                }
+            }
+            
+            // For each chatId, get the last 100 messages
+            for (chatId in chatIds) {
+                val cursor = database!!.rawQuery(
+                    "SELECT id FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 100",
+                    arrayOf(chatId)
+                )
+                
+                cursor.use {
+                    if (it.moveToFirst()) {
+                        do {
+                            val messageId = it.getString(it.getColumnIndexOrThrow("id"))
+                            messageIds.add(messageId)
+                        } while (it.moveToNext())
+                    }
+                }
+            }
+            
+        } catch (e: SQLiteException) {
+            Log.e(TAG, "SQLite error getting message IDs: ${e.message}")
+            // Try to recover by reinitializing database
+            initializeDatabase()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting message IDs: ${e.message}")
+        }
+        
+        return messageIds
+    }
+
+    // Note: The function might be slow on devices with a lot of messages. Prefer getRelevantMessageIds
     fun getAllMessageIds(): List<String> {
         val messageIds = mutableListOf<String>()
         
@@ -352,7 +400,7 @@ class NearbyService : Service(), ConnectionHandler.ConnectionCallbacks {
     
     private fun initiateSyncWithPeer(endpointId: String) {
         try {
-            val knownMessageIds = getAllMessageIds()
+            val knownMessageIds = getRelevantMessageIds()
             val syncRequest = JSONObject().apply {
                 put("type", MSG_TYPE_SYNC_REQUEST)
                 put("messageIds", JSONArray(knownMessageIds))
@@ -420,6 +468,7 @@ class NearbyService : Service(), ConnectionHandler.ConnectionCallbacks {
         try {
             val messages = jsonMessage.getJSONArray("messages")
             var storedCount = 0
+            val mostRecentByChatId = mutableMapOf<String, Message>()
             
             for (i in 0 until messages.length()) {
                 val messageObj = messages.getJSONObject(i)
@@ -430,8 +479,23 @@ class NearbyService : Service(), ConnectionHandler.ConnectionCallbacks {
                 val chatId = messageObj.optString("chat_id", "")
                 
                 val message = Message(messageId, content, userId, createdAt, chatId)
+                
+                // Check if this message is more recent (for notifications)
+                val localMostRecentTimestamp = 
+                    if (mostRecentByChatId[chatId] == null) getMostRecentLocalMessageTimestamp(chatId) 
+                    else mostRecentByChatId[chatId]!!.createdAt
+                val isMoreRecent = message.createdAt > localMostRecentTimestamp
+                
                 if (storeMessage(message)) {
                     storedCount++
+                    
+                    if (isMoreRecent) {
+                        Log.d(TAG, "Found more recent chat: $chatId")
+                        val currentMostRecent = mostRecentByChatId[chatId]
+                        if (currentMostRecent == null || message.createdAt > currentMostRecent.createdAt) {
+                            mostRecentByChatId[chatId] = message
+                        }
+                    }
                 }
             }
             
@@ -440,10 +504,35 @@ class NearbyService : Service(), ConnectionHandler.ConnectionCallbacks {
                 notifyNewMessages(storedCount)
             }
             
+            // Check for notifications for each subscribed chat
+            for ((chatId, mostRecentMessage) in mostRecentByChatId) {
+                Log.d(TAG, "More recent message in chat: $chatId")
+                if (isSubscribedToNotifications(chatId)) {
+                    showMessageNotification(mostRecentMessage)
+                    Log.d(TAG, "🔔 Raised notification for synced message in chat: $chatId")
+                }
+            }
+            
             Log.d(TAG, "Received message batch from $endpointId: stored $storedCount/${messages.length()} messages")
         } catch (e: Exception) {
             Log.e(TAG, "Error handling message batch from $endpointId: ${e.message}")
         }
+    }
+    
+    private fun getMostRecentLocalMessageTimestamp(chatId: String): Long {
+        try {
+            val query = "SELECT created_at FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1"
+            val cursor = database?.rawQuery(query, arrayOf(chatId))
+            
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    return it.getLong(it.getColumnIndexOrThrow("created_at"))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting most recent message timestamp for chat $chatId: ${e.message}")
+        }
+        return 0L // Return 0 if no messages found or error occurred
     }
     
     private fun handleChatMessage(endpointId: String, jsonMessage: JSONObject, messageData: String) {

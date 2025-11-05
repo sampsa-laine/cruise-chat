@@ -3,25 +3,38 @@ import { StyleSheet } from "react-native";
 import { Snackbar, Surface, useTheme } from "react-native-paper";
 
 import ChatWindow from "@/components/ChatWindow";
+import { useUsername } from "@/components/useUsername";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function TabOneScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const [username, setUsername] = useState<string | null>(null);
+  const { usernameState } = useUsername();
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [snackbarType, setSnackbarType] = useState<
     "success" | "error" | "info"
   >("info");
 
-  // Reload every single time we get focus 
-  useFocusEffect(
-    useCallback(() => {
-      checkUsername();
-    }, [])
-  );
+  useEffect(() => {
+    // Check if we need to show the welcome screen
+    if (usernameState.isInitialized && !usernameState.username) {
+      router.push("/Welcome");
+    }
+
+    // Subscribe to notifications for General chat (empty string chatId)
+    const subscribeToGeneralChat = async () => {
+      try {
+        await MeshPeerModule.subscribeToNotifications("");
+        console.log("Subscribed to notifications for General chat");
+      } catch (error) {
+        console.error("Failed to subscribe to General chat:", error);
+      }
+    };
+
+    subscribeToGeneralChat();
+  }, [usernameState.isInitialized, usernameState.username, router]);
 
   const showSnackbar = (
     message: string,
@@ -30,22 +43,6 @@ export default function TabOneScreen() {
     setSnackbarMessage(message);
     setSnackbarType(type);
     setSnackbarVisible(true);
-  };
-
-  const checkUsername = async () => {
-    try {
-      const storedUsername = await MeshPeerModule.getUsername();
-
-      if (!storedUsername) {
-        router.push("/Welcome");
-      } else {
-        setUsername(storedUsername);
-      }
-    } catch (error) {
-      console.error("Failed to check username:", error);
-      // If there's an error, show the modal anyway
-      router.push("/Welcome");
-    }
   };
 
   const getSnackbarColor = () => {
@@ -65,7 +62,7 @@ export default function TabOneScreen() {
         style={[styles.container, { backgroundColor: theme.colors.background }]}
       >
         <ChatWindow
-          username={username}
+          username={usernameState.username}
           emptyStateMessage="If you are on the cruise we could see messages soon"
           chatId=""
         />

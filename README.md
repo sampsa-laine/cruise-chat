@@ -5,15 +5,17 @@ CruiseChat aims to be a simple messaging app that works with peer-to-peer connec
 ## Features
 
 - Enhanced logging
+- Basic chatrooms with room keys
+- Notifications
+- Gifs
 
 ## Todo
 
-- Basic chatrooms with room keys
-- Notifications
+- Add more gifs. Add the (not that large) files to assets/chats/ and then modify components/ChatWindow.tsx somewhere around line 85
+- Send notification on batch receive if they are more recent
+- Don't send notifications when open in the chatroom
 - Automatic service start
-- Service restart across reboots
 - Throttling users (limit messages sent per second)
-- Gifs
 
 ## Developing the native module
 

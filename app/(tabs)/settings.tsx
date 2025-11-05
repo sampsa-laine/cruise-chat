@@ -1,4 +1,5 @@
 import { usePeerStatus } from "@/components/usePeerStatus";
+import { useUsername } from "@/components/useUsername";
 import { getMessageCount } from "@/database/services";
 import MeshPeerModule from "@/modules/mesh_peer_module/src/MeshPeerModule";
 import { useFocusEffect } from "@react-navigation/native";
@@ -17,7 +18,7 @@ import {
 
 export default function SettingsScreen() {
   const theme = useTheme();
-  const [username, setUsername] = useState("");
+  const [localUsername, setLocalUsername] = useState("");
   const [messageCount, setMessageCount] = useState(0);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
@@ -25,13 +26,17 @@ export default function SettingsScreen() {
     "success" | "error" | "info"
   >("info");
   const { peerStatus, actions } = usePeerStatus();
+  const { usernameState, actions: usernameActions } = useUsername();
   const { isServiceRunning, connectedPeers } = peerStatus;
   console.log({ isServiceRunning });
   useFocusEffect(
     useCallback(() => {
-      loadUsername();
       loadMessageCount();
-    }, []),
+      // Sync local username state with context
+      if (usernameState.username) {
+        setLocalUsername(usernameState.username);
+      }
+    }, [usernameState.username]),
   );
 
   const showSnackbar = (
@@ -41,17 +46,6 @@ export default function SettingsScreen() {
     setSnackbarMessage(message);
     setSnackbarType(type);
     setSnackbarVisible(true);
-  };
-
-  const loadUsername = async () => {
-    try {
-      const storedUsername = await MeshPeerModule.getUsername();
-      if (storedUsername) {
-        setUsername(storedUsername);
-      }
-    } catch (error) {
-      console.error("Failed to load username:", error);
-    }
   };
 
   const loadMessageCount = async () => {
@@ -64,12 +58,12 @@ export default function SettingsScreen() {
   };
 
   const handleSaveUsername = async () => {
-    if (!username.trim()) {
+    if (!localUsername.trim()) {
       showSnackbar("Username cannot be empty", "error");
       return;
     }
     try {
-      await MeshPeerModule.setUsername(username.trim());
+      await usernameActions.setUsername(localUsername.trim());
       showSnackbar("Username updated successfully", "success");
     } catch (error) {
       console.error("Failed to save username:", error);
@@ -119,17 +113,20 @@ export default function SettingsScreen() {
               <TextInput
                 mode="outlined"
                 label="Username"
-                value={username}
-                onChangeText={setUsername}
+                value={localUsername}
+                onChangeText={setLocalUsername}
                 placeholder="Enter your username"
                 style={styles.usernameInput}
                 right={<TextInput.Icon icon="account" disabled />}
+                disabled={usernameState.isLoading}
               />
               <Button
                 mode="contained"
                 onPress={handleSaveUsername}
                 style={styles.saveButton}
                 contentStyle={styles.saveButtonContent}
+                disabled={usernameState.isLoading || !localUsername.trim()}
+                loading={usernameState.isLoading}
               >
                 Save Username
               </Button>

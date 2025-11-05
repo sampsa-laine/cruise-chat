@@ -1,5 +1,6 @@
 import { ConnectedPeersStatus } from "@/components/ConnectedPeersStatus";
 import PeerStatusProvider from "@/components/usePeerStatus";
+import UsernameProvider from "@/components/useUsername";
 import { paperTheme } from "@/constants/themes/paperTheme";
 import db from "@/database";
 import migrations from "@/drizzle/migrations";
@@ -85,17 +86,22 @@ function RootLayoutNav() {
   return (
     <PaperProvider theme={paperTheme}>
       <ThemeProvider value={customTheme}>
-        <PeerStatusProvider>
-          <StatusBar
-            style="dark" // there is currently only a light theme, so make the statusbar dark.
-            backgroundColor="transparent"
-            translucent={true}
-          />
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="Welcome" options={{ presentation: "modal" }} />
-          </Stack>
-        </PeerStatusProvider>
+        <UsernameProvider>
+          <PeerStatusProvider>
+            <StatusBar
+              style="dark" // there is currently only a light theme, so make the statusbar dark.
+              backgroundColor="transparent"
+              translucent={true}
+            />
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="Welcome"
+                options={{ presentation: "modal" }}
+              />
+            </Stack>
+          </PeerStatusProvider>
+        </UsernameProvider>
       </ThemeProvider>
     </PaperProvider>
   );

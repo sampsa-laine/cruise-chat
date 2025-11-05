@@ -2,6 +2,7 @@ import { Modal, StyleSheet, TextInput, TouchableOpacity } from "react-native";
 
 import ChatWindow from "@/components/ChatWindow";
 import { Text, View } from "@/components/Themed";
+import { useUsername } from "@/components/useUsername";
 import Colors from "@/constants/Colors";
 import MeshPeerModule from "@/modules/mesh_peer_module/src/MeshPeerModule";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -12,7 +13,7 @@ import { Pressable } from "react-native";
 export default function MessagesScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const [username, setUsername] = useState<string | null>(null);
+  const { usernameState } = useUsername();
   const [chatId, setChatId] = useState("default");
   const [showEditModal, setShowEditModal] = useState(true);
   const [tempChatId, setTempChatId] = useState("");
@@ -41,6 +42,10 @@ export default function MessagesScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      title:
+        chatId.length > 0
+          ? "Room: " + chatId[0].toUpperCase() + chatId.substring(1, chatId.length)
+          : "Rooms",
       headerRight: () => (
         <Pressable onPress={handleEditChatId}>
           {({ pressed }) => (
@@ -54,7 +59,7 @@ export default function MessagesScreen() {
         </Pressable>
       ),
     });
-  }, [navigation, handleEditChatId]);
+  }, [navigation, handleEditChatId, chatId]);
 
   const handleSaveChatId = async () => {
     if (tempChatId.trim()) {
@@ -97,9 +102,14 @@ export default function MessagesScreen() {
   useEffect(() => {
     setTempChatId(chatId);
   }, [chatId]);
+
   useEffect(() => {
-    checkUsername();
-  }, []);
+    // Check if we need to show the welcome screen
+    if (usernameState.isInitialized && !usernameState.username) {
+      router.push("/Welcome");
+    }
+  }, [usernameState.isInitialized, usernameState.username, router]);
+
   useEffect(() => {
     // Load subscriptions whenever the modal opens
     if (showEditModal) {
@@ -119,31 +129,10 @@ export default function MessagesScreen() {
     subscribeToInitialChat();
   }, []);
 
-  const checkUsername = async () => {
-    try {
-      const storedUsername = await MeshPeerModule.getUsername();
-
-      if (!storedUsername) {
-        router.push("/Welcome");
-      } else {
-        setUsername(storedUsername);
-      }
-    } catch (error) {
-      console.error("Failed to check username:", error);
-      router.push("/Welcome");
-    }
-  };
-
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {chatId.length > 0 &&
-            chatId[0].toUpperCase() + chatId.substring(1, chatId.length)}
-        </Text>
-      </View>
       <ChatWindow
-        username={username}
+        username={usernameState.username}
         emptyStateMessage="No messages in this chat"
         chatId={chatId}
       />
@@ -223,18 +212,6 @@ export default function MessagesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    paddingTop: 10,
-    paddingBottom: 15,
-    paddingHorizontal: 20,
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
   },
   modalOverlay: {
     flex: 1,

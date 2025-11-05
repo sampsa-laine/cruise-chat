@@ -1,19 +1,19 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-  ReactNode,
-} from "react";
+import { type Message } from "@/database/schema";
+import { addMessage, getMessages } from "@/database/services";
 import MeshPeerModule from "@/modules/mesh_peer_module/src/MeshPeerModule";
 import type {
   MessageReceivedPayload,
   NewMessagesPayload,
 } from "@/modules/mesh_peer_module/src/MeshPeerModule.types";
 import type { EventSubscription } from "expo-modules-core";
-import { getMessages, addMessage } from "@/database/services";
-import { type Message } from "@/database/schema";
+import React, {
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 interface MessagesState {
   messages: Message[];
@@ -61,7 +61,7 @@ export const MessagesProvider: React.FC<MessagesProviderProps> = ({
   const refreshMessages = useCallback(async () => {
     updateMessagesState({ isLoading: true });
     try {
-      const messages = await getMessages(chatId);
+      const messages = await getMessages(chatId, 100);
       updateMessagesState({
         messages,
         isLoading: false,

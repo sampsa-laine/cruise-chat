@@ -1,21 +1,20 @@
-import { ConnectedPeersStatus } from "@/components/ConnectedPeersStatus";
-import { usePeerStatus } from "@/components/usePeerStatus";
 import { MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import {
-  CommonActions,
-  ParamListBase,
-  TabNavigationState,
-} from "@react-navigation/native";
+import
+  {
+    CommonActions,
+    ParamListBase,
+    TabNavigationState,
+  } from "@react-navigation/native";
 import { Tabs, withLayoutContext } from "expo-router";
 import React from "react";
-import {
-  BottomNavigation,
-  MaterialBottomTabNavigationEventMap,
-  MaterialBottomTabNavigationOptions,
-  useTheme,
-  Text,
-} from "react-native-paper";
+import
+  {
+    BottomNavigation,
+    MaterialBottomTabNavigationEventMap,
+    MaterialBottomTabNavigationOptions,
+    useTheme
+  } from "react-native-paper";
 
 const { Navigator } = createBottomTabNavigator();
 const MaterialBottomTabs = withLayoutContext<
@@ -82,7 +81,7 @@ export default function TabLayout() {
             <MaterialIcons name="message" color={color} size={size} />
           ),
           headerRight(props) {
-            return <ConnectedPeersStatus />;
+            // return <ConnectedPeersStatus />; // Maybe we won't want to display here since this isn't the actual amount of people in the graph and rather a technical detail
           },
           tabBarLabel: "Chat",
         }}

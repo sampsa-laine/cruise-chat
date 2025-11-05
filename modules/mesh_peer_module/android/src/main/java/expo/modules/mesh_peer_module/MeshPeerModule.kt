@@ -6,13 +6,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.net.URL
+import androidx.core.content.edit
 
 data class Message(
     val id: String,
@@ -24,7 +27,8 @@ data class Message(
 
 class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
   private var nearbyService: NearbyService? = null
-  private var serviceBound = false
+
+  private val TAG = "MeshPeerModule"
 
   companion object {
     private const val REQUEST_CODE_PERMISSIONS = 1234
@@ -36,12 +40,11 @@ class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
       
       basePermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
       
-      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         basePermissions.addAll(listOf(
           Manifest.permission.BLUETOOTH_ADVERTISE,
           Manifest.permission.BLUETOOTH_CONNECT,
           Manifest.permission.BLUETOOTH_SCAN,
-          Manifest.permission.NEARBY_WIFI_DEVICES
         ))
       } else {
         basePermissions.addAll(listOf(
@@ -50,8 +53,9 @@ class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
         ))
       }
       
-      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         basePermissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        basePermissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
       }
       
       return basePermissions
@@ -62,22 +66,24 @@ class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
       val binder = service as NearbyService.LocalBinder
       nearbyService = binder.getService()
-      serviceBound = true
       nearbyService?.setListener(this@MeshPeerModule)
+      val discoveryStarted = nearbyService?.startFindConnections() ?: false
+      if(discoveryStarted) {
+        Log.d(TAG, "Started automatic discovery in NearbyService")
+      }
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
       nearbyService = null
-      serviceBound = false
     }
   }
 
-  private fun DebugLog(message: String) {
+  private fun debugLog(message: String) {
     sendEvent("onDebug", mapOf("message" to message))
   }
 
   override fun onPeerConnected(endpointId: String) {
-    DebugLog("Peer connected")
+    debugLog("Peer connected")
     sendEvent("onPeerConnected", mapOf("endpointId" to endpointId))
   }
 
@@ -159,20 +165,21 @@ class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
     }
 
     AsyncFunction("startDiscovery") { promise: Promise ->
-      android.util.Log.d("MeshPeerModule", "startDiscovery called")
+      Log.d(TAG, "startDiscovery called")
       
       if (!hasRequiredPermissions()) {
-        android.util.Log.w("MeshPeerModule", "startDiscovery failed: permissions not granted")
+        Log.w(TAG, "startDiscovery failed: permissions not granted")
         promise.reject("PERMISSION_DENIED", "Required permissions not granted", null)
         return@AsyncFunction
       }
 
+      Log.d(TAG, "Nearbyservice: $nearbyService");
       val success: Boolean = nearbyService?.startFindConnections() ?: false
       if (success) {
-        android.util.Log.d("MeshPeerModule", "startDiscovery succeeded")
+        Log.d(TAG, "startDiscovery succeeded")
         promise.resolve(null)
       } else {
-        android.util.Log.e("MeshPeerModule", "startDiscovery failed")
+        Log.e(TAG, "startDiscovery failed")
         promise.reject("DISCOVERY_FAILED", "Failed to start discovery", null)
       }
     }
@@ -211,8 +218,18 @@ class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
       try {
         val context = appContext.reactContext!!
         val intent = Intent(context, NearbyService::class.java)
-        context.startForegroundService(intent)
-        bindToNearbyService()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          // startForegroundService() was introduced in O, just call startService for before O.
+          context.startForegroundService(intent)
+        } else {
+          context.startService(intent)
+        }
+        if (!bindToNearbyService()) {
+          Log.d(TAG, "Failed to bind to nearby service");
+          promise.reject("SERVICE_START_FAILED","Failed to bind to nearby service", null);
+          return@AsyncFunction
+        }
+        Log.d(TAG, "Service started successfully")
         promise.resolve("Service started successfully")
       } catch (e: Exception) {
         promise.reject("SERVICE_START_FAILED", "Failed to start Nearby service: ${e.message}", e)
@@ -231,12 +248,21 @@ class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
       }
     }
 
-    AsyncFunction("getAllMessageIds") { promise: Promise ->
+    AsyncFunction("getRelevantMessageIds") { promise: Promise ->
       try {
-        val messageIds = nearbyService?.getAllMessageIds() ?: emptyList()
+        val messageIds = nearbyService?.getRelevantMessageIds() ?: emptyList()
         promise.resolve(messageIds)
       } catch (e: Exception) {
         promise.reject("DATABASE_ERROR", "Failed to get message IDs: ${e.message}", e)
+      }
+    }
+
+    AsyncFunction("getMessageCount") { promise: Promise ->
+      try {
+        val count = nearbyService?.getMessageCount() ?: 0
+        promise.resolve(count)
+      } catch (e: Exception) {
+        promise.reject("DATABASE_ERROR", "Failed to get message count: ${e.message}", e)
       }
     }
 
@@ -261,7 +287,8 @@ class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
           return@AsyncFunction
         }
         val sharedPrefs = context.getSharedPreferences("cruise_chat_prefs", android.content.Context.MODE_PRIVATE)
-        sharedPrefs.edit().putString("username", username).apply()
+        sharedPrefs.edit(commit = true) { putString("username", username) }
+
         promise.resolve(null)
       } catch (e: Exception) {
         promise.reject("SET_USERNAME_ERROR", "Failed to set username: ${e.message}", e)
@@ -339,17 +366,17 @@ class MeshPeerModule : Module(), NearbyService.NearbyServiceListener {
     }
   }
 
-  private fun bindToNearbyService() {
-    val context = appContext.reactContext ?: return
+  private fun bindToNearbyService(): Boolean {
+    val context = appContext.reactContext ?: return false
+    Log.d(TAG, "Binding to service..");
     val intent = Intent(context, NearbyService::class.java)
-    context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+    return context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
   }
 
   private fun unbindFromNearbyService() {
-    if (serviceBound) {
+    if (nearbyService != null) {
       val context = appContext.reactContext ?: return
       context.unbindService(serviceConnection)
-      serviceBound = false
       nearbyService?.setListener(null)
       nearbyService = null
     }

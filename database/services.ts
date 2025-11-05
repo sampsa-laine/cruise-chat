@@ -1,7 +1,8 @@
-import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { db } from "./index";
 import { type Message, messages, type NewMessage } from "./schema";
+import MeshPeerModule from "@/modules/mesh_peer_module/src/MeshPeerModule";
 
 /**
  * Adds a new message to the database
@@ -33,21 +34,26 @@ export const addMessage = async (
 
 export const getMessageIds = async (): Promise<string[]> => {
   try {
-    const rows = await db.select({ id: messages.id }).from(messages);
-    return rows.map((r) => r.id);
+    return await MeshPeerModule.getRelevantMessageIds();
   } catch (error) {
     console.error("Error fetching message ids:", error);
     throw new Error(`Failed to get message ids: ${error}`);
   }
 };
 
-export const getMessages = async (chatId: string): Promise<Message[]> => {
+export const getMessages = async (
+  chatId: string,
+  maxMessageCount?: number,
+): Promise<Message[]> => {
   try {
+    const limit = maxMessageCount ?? 999
     return await db
       .select()
       .from(messages)
       .where(eq(messages.chatId, chatId))
-      .orderBy(messages.createdAt);
+      .orderBy(messages.createdAt)
+      .limit(limit)
+
   } catch (error) {
     console.error("Error fetching messages:", error);
     throw new Error(`Failed to get messages: ${error}`);
@@ -56,8 +62,7 @@ export const getMessages = async (chatId: string): Promise<Message[]> => {
 
 export const getMessageCount = async (): Promise<number> => {
   try {
-    const result = await db.select().from(messages);
-    return result.length;
+    return await MeshPeerModule.getMessageCount();
   } catch (error) {
     console.error("Error counting messages:", error);
     throw new Error(`Failed to count messages: ${error}`);
